@@ -5,6 +5,16 @@ const PADDING_FACTOR = 1.4;
 const OUTPUT_SIZE = 1000;
 
 module.exports = async (req, res) => {
+  // Allow requests from any origin (needed so a local HTML file / browser can call this API)
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  // Browsers send a preflight OPTIONS request before the real POST — must answer it
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ success: false, message: 'Method not allowed' });
   }
