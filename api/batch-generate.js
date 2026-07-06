@@ -12,8 +12,8 @@ const volteFonts = require('../fonts/volte-fonts');
 const CARD_WIDTH_PT = 153.07;
 const CARD_HEIGHT_PT = 243.78;
 
-// Render resolution for the JPEG output. 300 DPI is standard print quality.
-const RENDER_DPI = 300;
+// Render resolution for the JPEG output. 600 DPI = 2x the previous 300 DPI.
+const RENDER_DPI = 600;
 const SCALE = RENDER_DPI / 72;
 
 module.exports = async (req, res) => {
@@ -68,12 +68,36 @@ function fillTemplate({ name, nickname, role, email, tel, photoBase64 }) {
   let svg = badgeTemplate;
   svg = svg.split('{{NAME}}').join(escapeXml(name));
   svg = svg.split('{{NICKNAME}}').join(escapeXml(nickname));
-  svg = svg.split('{{ROLE}}').join(escapeXml(role));
+  svg = svg.split('{{ROLE_BLOCK}}').join(buildRoleBlock(role));
   svg = svg.split('{{EMAIL}}').join(escapeXml(email));
   svg = svg.split('{{TEL}}').join(escapeXml(tel));
   svg = svg.split('{{PHOTO_BASE64}}').join(photoDataUri);
 
   return svg;
+}
+
+// Google Sheets cells edited with CMD+ENTER (or ALT+ENTER on Windows)
+// store an actual "\n" character for the manual line break. SVG's plain
+// <text> collapses newlines into whitespace instead of breaking the line,
+// so multi-line Role values must be split into separate <tspan> lines by
+// hand, with the vertical position recalculated to stay centered no
+// matter how many lines are present.
+function buildRoleBlock(roleValue) {
+  const centerX = 76.535;
+  const baseY = 49.58;   // vertical position used for a single-line role
+  const lineHeight = 12; // ~1.2 x font-size(10), matches the original design's line spacing
+
+  const lines = String(roleValue || '')
+    .split('\n')
+    .map(line => escapeXml(line.trim()));
+
+  const startY = baseY - ((lines.length - 1) * lineHeight) / 2;
+
+  const tspans = lines
+    .map((line, i) => `<tspan x="${centerX}" y="${startY + i * lineHeight}">${line}</tspan>`)
+    .join('');
+
+  return `<text text-anchor="middle" fill="#fff" font-family="Volte Semibold" font-size="10" font-weight="600">${tspans}</text>`;
 }
 
 // Renders the SVG using resvg-js, with the three Volte weights supplied
