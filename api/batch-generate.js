@@ -1,5 +1,8 @@
 const { Resvg } = require('@resvg/resvg-js');
 const { PDFDocument } = require('pdf-lib');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const badgeTemplate = require('../templates/badge-template');
 const volteFonts = require('../fonts/volte-fonts');
 
@@ -78,12 +81,33 @@ function fillTemplate({ name, nickname, role, email, tel, photoBase64 }) {
 // @font-face / data-URI font embedding, which is unreliable in headless
 // Lambda environments that have no system fonts or fontconfig fallback —
 // the exact issue that caused every character to render as a tofu box.
-function renderSvgToJpeg(svgString) {
-  const fontBuffers = [
-    Buffer.from(volteFonts.medium, 'base64'),
-    Buffer.from(volteFonts.semibold, 'base64'),
-    Buffer.from(volteFonts.bold, 'base64')
+// fontBuffers (in-memory font data) is known to be unreliable on some
+// serverless/Lambda environments with @resvg/resvg-js — it can silently
+// fail to parse the font with no error thrown, causing all text to
+// disappear entirely. Writing the fonts to /tmp (the one writable
+// directory in Lambda) and using fontFiles instead is the more reliable
+// approach. Files are written once per warm container and reused on
+// subsequent invocations of the same instance.
+function getFontFilePaths() {
+  const tmpDir = os.tmpdir();
+  const fontEntries = [
+    { key: 'medium', filename: 'volte-medium.otf' },
+    { key: 'semibold', filename: 'volte-semibold.otf' },
+    { key: 'bold', filename: 'volte-bold.otf' }
   ];
+
+  return fontEntries.map(({ key, filename }) => {
+    const filePath = path.join(tmpDir, filename);
+    if (!fs.existsSync(filePath)) {
+      const buffer = Buffer.from(volteFonts[key], 'base64');
+      fs.writeFileSync(filePath, buffer);
+    }
+    return filePath;
+  });
+}
+
+function renderSvgToJpeg(svgString) {
+  const fontFilePaths = getFontFilePaths();
 
   // NOTE: resvg-js has a quirk where supplying `font` and `fitTo` in the
   // same options object causes `fitTo` to be silently ignored. Workaround:
@@ -91,7 +115,7 @@ function renderSvgToJpeg(svgString) {
   // upscale separately via sharp to reach 300 DPI print resolution.
   const resvg = new Resvg(svgString, {
     font: {
-      fontBuffers: fontBuffers,
+      fontFiles: fontFilePaths,
       loadSystemFonts: false // don't waste time scanning for system fonts that don't exist here
     }
   });
