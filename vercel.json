@@ -3,6 +3,9 @@
   "functions": {
     "api/process-image.js": {
       "maxDuration": 30
+    },
+    "api/batch-generate.js": {
+      "maxDuration": 30
     }
   }
 }
