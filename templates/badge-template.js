@@ -49,6 +49,6 @@ module.exports = `<?xml version="1.0" encoding="UTF-8"?>
     <text x="76.535" y="192.29" text-anchor="middle" fill="#333" font-family="Volte Semibold" font-size="10.03" font-weight="600">{{NICKNAME}}</text>
     <text x="76.535" y="209.37" text-anchor="middle" fill="#f47920" font-family="Volte Medium" font-size="7" font-weight="500">{{EMAIL}}</text>
     <text x="76.535" y="218.06" text-anchor="middle" fill="#f47920" font-family="Volte" font-size="7" font-weight="700">{{TEL}}</text>
-    <text x="76.535" y="49.58" text-anchor="middle" fill="#fff" font-family="Volte Semibold" font-size="10" font-weight="600">{{ROLE}}</text>
+    {{ROLE_BLOCK}}
   </g>
 </svg>`;
