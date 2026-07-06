@@ -82,16 +82,24 @@ function fillTemplate({ name, nickname, role, email, tel, photoBase64 }) {
 // so multi-line Role values must be split into separate <tspan> lines by
 // hand, with the vertical position recalculated to stay centered no
 // matter how many lines are present.
+//
+// The usable green area runs from the bottom of the white logo strip
+// (y=32.39) down to the top of the circular photo cutout (y=83.46).
+// The text block (1-3 lines) is centered within that span, with equal
+// top/bottom margin regardless of line count.
 function buildRoleBlock(roleValue) {
   const centerX = 76.535;
-  const baseY = 49.58;   // vertical position used for a single-line role
-  const lineHeight = 12; // ~1.2 x font-size(10), matches the original design's line spacing
+  const areaTop = 32.39;
+  const areaBottom = 83.46;
+  const areaCenterY = (areaTop + areaBottom) / 2;
+  const lineHeight = 12;   // ~1.2 x font-size(10), matches the design's line spacing
+  const baselineOffset = 3.5; // approx half cap-height for 10px Volte Semibold — shifts from visual-center to SVG baseline
 
   const lines = String(roleValue || '')
     .split('\n')
     .map(line => escapeXml(line.trim()));
 
-  const startY = baseY - ((lines.length - 1) * lineHeight) / 2;
+  const startY = areaCenterY - ((lines.length - 1) * lineHeight) / 2 + baselineOffset;
 
   const tspans = lines
     .map((line, i) => `<tspan x="${centerX}" y="${startY + i * lineHeight}">${line}</tspan>`)
@@ -133,29 +141,25 @@ function getFontFilePaths() {
 function renderSvgToJpeg(svgString) {
   const fontFilePaths = getFontFilePaths();
 
-  // NOTE: resvg-js has a quirk where supplying `font` and `fitTo` in the
-  // same options object causes `fitTo` to be silently ignored. Workaround:
-  // render at the SVG's native size (with fonts applied correctly), then
-  // upscale separately via sharp to reach 300 DPI print resolution.
+  // The SVG root now declares width="54mm" height="86mm" alongside its
+  // viewBox, so resvg's `dpi` option can rasterize directly at the target
+  // print resolution — the embedded photo is decoded and drawn at full
+  // resolution from the start. This replaces the earlier approach of
+  // rendering at native (tiny) size and upscaling via sharp afterward,
+  // which baked in blur before the resize ever happened.
   const resvg = new Resvg(svgString, {
     font: {
       fontFiles: fontFilePaths,
       loadSystemFonts: false // don't waste time scanning for system fonts that don't exist here
-    }
+    },
+    dpi: RENDER_DPI
   });
 
   const pngData = resvg.render();
-  const nativePngBuffer = pngData.asPng();
-
-  const targetWidth = Math.round(CARD_WIDTH_PT * SCALE);
-  const targetHeight = Math.round(CARD_HEIGHT_PT * SCALE);
+  const pngBuffer = pngData.asPng();
 
   const sharp = require('sharp');
-  return sharp(nativePngBuffer)
-    .resize(targetWidth, targetHeight)
-    .flatten({ background: '#ffffff' })
-    .jpeg({ quality: 95 })
-    .toBuffer();
+  return sharp(pngBuffer).flatten({ background: '#ffffff' }).jpeg({ quality: 95 }).toBuffer();
 }
 
 async function wrapJpegInPdf(jpegBuffer) {
