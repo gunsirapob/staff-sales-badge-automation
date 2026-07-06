@@ -1,5 +1,5 @@
 module.exports = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 153.07 243.78">
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="54mm" height="86mm" viewBox="0 0 153.07 243.78">
   <!-- Generator: Adobe Illustrator 30.6.0, SVG Export Plug-In . SVG Version: 2.1.4 Build 109)  -->
   
   <g id="bg_x5F_ci_x5F_color">
