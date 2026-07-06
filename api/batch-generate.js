@@ -1,15 +1,17 @@
-const sharp = require('sharp');
+const { Resvg } = require('@resvg/resvg-js');
 const { PDFDocument } = require('pdf-lib');
 const badgeTemplate = require('../templates/badge-template');
+const volteFonts = require('../fonts/volte-fonts');
 
-// The template's viewBox is 153.07 x 243.78 user units, which was
-// deliberately designed at 72 units-per-inch — i.e. it maps 1:1 to
-// PDF points. This equals a standard CR80 card: 54mm x 86mm (portrait).
+// The template's viewBox is 153.07 x 243.78 user units, authored at
+// 72 units-per-inch — i.e. it maps 1:1 to PDF points. This equals a
+// standard CR80 card: 54mm x 86mm (portrait).
 const CARD_WIDTH_PT = 153.07;
 const CARD_HEIGHT_PT = 243.78;
 
 // Render resolution for the JPEG output. 300 DPI is standard print quality.
 const RENDER_DPI = 300;
+const SCALE = RENDER_DPI / 72;
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -47,8 +49,6 @@ module.exports = async (req, res) => {
   }
 };
 
-// Escapes characters that would otherwise break the XML structure of the SVG
-// (e.g. an email or name containing "&" would corrupt the file if inserted raw).
 function escapeXml(value) {
   return String(value || '')
     .replace(/&/g, '&amp;')
@@ -59,8 +59,6 @@ function escapeXml(value) {
 }
 
 function fillTemplate({ name, nickname, role, email, tel, photoBase64 }) {
-  // Strip any data URL prefix the caller might have included, so we control
-  // the mime type ourselves when re-embedding into the SVG <image> tag.
   const cleanPhotoBase64 = photoBase64.replace(/^data:image\/\w+;base64,/, '');
   const photoDataUri = `data:image/png;base64,${cleanPhotoBase64}`;
 
@@ -75,26 +73,47 @@ function fillTemplate({ name, nickname, role, email, tel, photoBase64 }) {
   return svg;
 }
 
-async function renderSvgToJpeg(svgString) {
-  const svgBuffer = Buffer.from(svgString, 'utf-8');
+// Renders the SVG using resvg-js, with the three Volte weights supplied
+// directly as font buffers. This avoids relying on the SVG's own
+// @font-face / data-URI font embedding, which is unreliable in headless
+// Lambda environments that have no system fonts or fontconfig fallback —
+// the exact issue that caused every character to render as a tofu box.
+function renderSvgToJpeg(svgString) {
+  const fontBuffers = [
+    Buffer.from(volteFonts.medium, 'base64'),
+    Buffer.from(volteFonts.semibold, 'base64'),
+    Buffer.from(volteFonts.bold, 'base64')
+  ];
 
-  // `density` tells sharp/librsvg how many pixels to render per the SVG's
-  // native 72-units-per-inch — e.g. density 300 renders at 300 DPI.
-  const jpeg = await sharp(svgBuffer, { density: RENDER_DPI })
-    .flatten({ background: '#ffffff' }) // JPEG has no alpha channel, force white background
+  // NOTE: resvg-js has a quirk where supplying `font` and `fitTo` in the
+  // same options object causes `fitTo` to be silently ignored. Workaround:
+  // render at the SVG's native size (with fonts applied correctly), then
+  // upscale separately via sharp to reach 300 DPI print resolution.
+  const resvg = new Resvg(svgString, {
+    font: {
+      fontBuffers: fontBuffers,
+      loadSystemFonts: false // don't waste time scanning for system fonts that don't exist here
+    }
+  });
+
+  const pngData = resvg.render();
+  const nativePngBuffer = pngData.asPng();
+
+  const targetWidth = Math.round(CARD_WIDTH_PT * SCALE);
+  const targetHeight = Math.round(CARD_HEIGHT_PT * SCALE);
+
+  const sharp = require('sharp');
+  return sharp(nativePngBuffer)
+    .resize(targetWidth, targetHeight)
+    .flatten({ background: '#ffffff' })
     .jpeg({ quality: 95 })
     .toBuffer();
-
-  return jpeg;
 }
 
 async function wrapJpegInPdf(jpegBuffer) {
   const pdfDoc = await PDFDocument.create();
 
-  // Page size in points == the card's real physical size (54mm x 86mm),
-  // because the SVG viewBox was authored at 72 units/inch.
   const page = pdfDoc.addPage([CARD_WIDTH_PT, CARD_HEIGHT_PT]);
-
   const jpegImage = await pdfDoc.embedJpg(jpegBuffer);
 
   page.drawImage(jpegImage, {
